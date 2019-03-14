@@ -1,0 +1,149 @@
+# 2019-03-12 Etienne Bayard for Capstone project McGill YCBS256
+#in Colabs after uploading files 2005_2017datamtleng.csv & 2018datamtleng.csv
+
+# Using pandas library for data management
+import pandas as pd
+
+# Using numpy for mathematical functions
+import numpy as np
+
+# Read the files into DataFrames: 
+data_train = pd.read_csv('2005_2017datamtleng.csv')
+data_test = pd.read_csv('2018datamtleng.csv')
+
+# View the heads of the DataFrames
+print(data_train.head())
+print(data_test.head())
+
+# One hot encode categorical data
+#http://www.insightsbot.com/blog/zuyVu/python-one-hot-encoding-with-pandas-made-simple
+df_train_dummies = pd.get_dummies(data_train[['Quote','Weekday']], prefix = 'category')
+print(data_train[['Quote','Weekday']].head())
+print(df_train_dummies.head())
+
+df_test_dummies = pd.get_dummies(data_test[['Quote','Weekday']], prefix = 'category')
+print(data_test[['Quote','Weekday']].head())
+print(df_test_dummies.head())
+
+
+# Normalize numerical data
+df_train_num = data_train[['Max Temp (C)', 'Min Temp (C)', 'Mean Temp (C)', 'Heat Deg Days (C)', 'Cool Deg Days (C)', 'Total Precip (mm)', 'Snow on Grnd (cm)']]
+df_train_norm =(df_train_num-df_train_num.mean())/df_train_num.std()
+
+df_test_num = data_test[['Max Temp (C)', 'Min Temp (C)', 'Mean Temp (C)', 'Heat Deg Days (C)', 'Cool Deg Days (C)', 'Total Precip (mm)', 'Snow on Grnd (cm)']]
+df_test_norm =(df_test_num-df_test_num.mean())/df_test_num.std()
+
+print(df_train_norm.head())
+print(df_test_norm.head())
+
+
+# Rebuild data frames with encoded and normalized data
+data_train_encoded = pd.concat([df_train_norm, df_train_dummies], axis=1)
+data_test_encoded = pd.concat([df_test_norm, df_test_dummies], axis=1)
+
+# View the head of the DataFrames
+print(data_train_encoded.head())
+print(data_test_encoded.head())
+
+
+# Creating a matrix X for training, as a subset of the dataframe  that includes only the attributes 'Max Temp (C)', 'Min Temp (C)', 'Mean Temp (C)', 'Heat Deg Days (C)', 'Cool Deg Days (C)', 'Total Precip (mm)', 'Snow on Grnd (cm)', 'category_Week', 'category_Weekend'
+X_train = data_train_encoded[['Max Temp (C)', 'Min Temp (C)', 'Mean Temp (C)', 'Heat Deg Days (C)', 'Cool Deg Days (C)', 'Total Precip (mm)', 'Snow on Grnd (cm)', 'category_Week', 'category_Weekend']].values
+
+# Creating a response variable y for training that is the quote for that day given the weather and day of the week (week or weekend): 'category_High', 'category_Low', 'category_Medium', 
+y_train = data_train_encoded[['category_High', 'category_Low', 'category_Medium']].values
+
+# We do the same for the test data
+X_test = data_test_encoded[['Max Temp (C)', 'Min Temp (C)', 'Mean Temp (C)', 'Heat Deg Days (C)', 'Cool Deg Days (C)', 'Total Precip (mm)', 'Snow on Grnd (cm)', 'category_Week', 'category_Weekend']].values
+y_test = data_test_encoded[['category_High', 'category_Low', 'category_Medium']].values
+
+
+# We'll do the same thing on multiple classifying methods: train the method on the training data and then predict on the test data and assess performance
+# No cross validation on the training set will be done given it's too long on Neural Networks
+
+# For a quick assesment of prediction performance on the test set, we'll be using the accuracy score and the confusion matrix for further analysis
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
+
+
+# Method 1: Random Forest
+
+# Import the random forest model from the Scikit-learn library and run the algorithm (training)
+from sklearn.ensemble import RandomForestClassifier
+rf = RandomForestClassifier(n_estimators=100)
+rf.fit(X_train,y_train)
+
+# We now apply our predictive model on the test data (X_test) and compute the accuracy score
+y_test_pred = rf.predict(X_test)
+as_rf = accuracy_score(y_test, y_test_pred)
+print(as_rf)
+
+# To run the confusion we must decode the y_test_pred to compare it to the original 'Quote' column of the 2018 data Frame
+# https://stackoverflow.com/questions/38334296/reversing-one-hot-encoding-in-pandas
+# pd.get_dummies(y_test_pred).idxmax(1)
+# Can't follow this method since the model output is not a Pandas dataframe
+
+# We must invert encoding on an array beacuse this is what we get as output from the algorithm.
+# https://stackoverflow.com/questions/43665041/how-compute-confusion-matrix-for-multiclass-classification-in-scikit?rq=1
+from numpy import argmax
+inverted_y_test_pred = [ np.argmax(t) for t in y_test_pred ]
+inverted_y_test = [ np.argmax(t) for t in y_test ]
+
+# print(inverted_y_test_pred)
+# print(inverted_y_test)
+
+# We can recompute the accuracy score on the arrays for consistency.
+as_inv_rf = accuracy_score(inverted_y_test, inverted_y_test_pred)
+print(as_inv_rf)
+
+# Create the confusion matrix from the invert encoded targets.
+cm_rf = confusion_matrix(inverted_y_test, inverted_y_test_pred)
+print(cm_rf)
+
+
+# Method 2: Neural networks
+
+# Import, built and train a keras NN classifier model and run it 
+
+# Import
+import keras
+from keras import layers
+from keras.models import Sequential
+from keras.layers import Dense
+
+# Single fully connected hidden layer with the same number of neurons as input attributes (9).
+# The network uses good practice such as the rectifier activation function for the hidden layer. 
+
+# Build
+nn = keras.Sequential()
+nn.add(layers.Dense(9, activation='relu', input_shape=(9,)))
+nn.add(layers.Dense(9, activation ='relu'))
+nn.add(layers.Dense(3, activation='relu'))
+
+nn.compile(loss='categorical_crossentropy', optimizer='adam')
+
+# Train
+# Fit the model
+nn.fit(X_train, y_train, batch_size=10, epochs=50)
+
+
+# We now apply our predictive model on the test data (X_test) 
+y_test_pred = nn.predict(X_test)
+
+#Accuracy score cannot be directly calculated given the output of the NN are not dummy variables, we must invert encode before
+
+
+# Invert encoding the targets
+inverted_y_test_pred = [ np.argmax(t) for t in y_test_pred ]
+inverted_y_test = [ np.argmax(t) for t in y_test ]
+
+#print(inverted_y_test_pred)
+#print(inverted_y_test)
+
+# We can now compute the accuracy score
+as_inv_nn = accuracy_score(inverted_y_test, inverted_y_test_pred)
+print(as_inv_nn)
+
+# Create the confusion matrix from the invert encoded targets.
+from sklearn.metrics import confusion_matrix
+cm_nn = confusion_matrix(inverted_y_test, inverted_y_test_pred)
+print(cm_nn)
